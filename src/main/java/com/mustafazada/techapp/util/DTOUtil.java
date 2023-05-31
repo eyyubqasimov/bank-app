@@ -1,6 +1,7 @@
 package com.mustafazada.techapp.util;
 
-import antlr.collections.impl.IndexedVector;
+import com.mustafazada.techapp.dto.request.AccountToAccountRequestDTO;
+import com.mustafazada.techapp.dto.request.AuthenticationRequestDTO;
 import com.mustafazada.techapp.dto.request.UserRequestDTO;
 import com.mustafazada.techapp.dto.response.CommonResponseDTO;
 import com.mustafazada.techapp.dto.response.Status;
@@ -24,11 +25,27 @@ public class DTOUtil {
         checkDTOInputInfo(userRequestDTO.getPin());
         checkDTOInputInfo(userRequestDTO.getAccountRequestDTOList());
     }
+
+    public void isValid(AuthenticationRequestDTO authenticationRequestDTO) {
+        logger.warn(authenticationRequestDTO.toString());
+        checkDTOInputInfo(authenticationRequestDTO.getPassword());
+        checkDTOInputInfo(authenticationRequestDTO.getPin());
+    }
+
+    public void isValid(AccountToAccountRequestDTO accountToAccountRequestDTO) {
+        logger.warn(accountToAccountRequestDTO.toString());
+        checkDTOInputInfo(accountToAccountRequestDTO.getDebitAccount());
+        checkDTOInputInfo(accountToAccountRequestDTO.getCreditAccount());
+        checkDTOInputInfo(accountToAccountRequestDTO.getAmount());
+
+    }
+
     private <T> void checkDTOInputInfo(T t) {
         if (Objects.isNull(t) || t.toString().isBlank()) {
         logger.error("Invalid Input");
         throw InvalidDTO.builder().responseDTO(CommonResponseDTO.builder()
-                .status(Status.builder().statusCode(StatusCode.INVALID_DTO).
+                .status(Status.builder()
+                        .statusCode(StatusCode.INVALID_DTO).
                         message("Invalid Data")
                         .build()).build()).build();
         }
