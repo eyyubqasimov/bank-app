@@ -1,4 +1,6 @@
 package com.mustafazada.techapp.service;
+import com.mustafazada.techapp.dto.mbdto.ValcursResponseDTO;
+import com.mustafazada.techapp.dto.mbdto.ValuteResponseDTO;
 import com.mustafazada.techapp.dto.request.AccountToAccountRequestDTO;
 import com.mustafazada.techapp.dto.response.*;
 import com.mustafazada.techapp.entity.Account;
@@ -6,13 +8,19 @@ import com.mustafazada.techapp.entity.TechUser;
 import com.mustafazada.techapp.exception.InvalidDTO;
 import com.mustafazada.techapp.repository.AccountRepository;
 import com.mustafazada.techapp.repository.UserRepository;
+import com.mustafazada.techapp.restclient.CbarRestClient;
+import com.mustafazada.techapp.util.Currency;
 import com.mustafazada.techapp.util.CurrentUser;
 import com.mustafazada.techapp.util.DTOUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ObjectUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -25,6 +33,8 @@ public class AccountService {
     private DTOUtil dtoUtil;
     @Autowired
     private AccountRepository accountRepository;
+    @Autowired
+    private CbarRestClient cbarRestClient;
     public CommonResponseDTO<?> getAccount(){
       Optional<TechUser> user = userRepository.findByPin(currentUser.getCurrentUser().getUsername());
 
@@ -94,13 +104,46 @@ public class AccountService {
                         .message("Credit account is not present")
                         .build()).build()).build();
             }
-        }else {throw InvalidDTO.builder().responseDTO(CommonResponseDTO.builder().status(Status.builder()
+        }else {
+            throw InvalidDTO.builder().responseDTO(CommonResponseDTO.builder().status(Status.builder()
                 .statusCode(StatusCode.INVALID_DTO)
                 .message("Debit account is not present")
                 .build()).build()).build();
          }
-        debitAccount.setBalance(debitAccount.getBalance().subtract(accountToAccountRequestDTO.getAmount()));
-        creditAccount.setBalance(debitAccount.getBalance().add(accountToAccountRequestDTO.getAmount()));
+        if (!debitAccount.getCurrency().equals(creditAccount.getCurrency())) {
+            ValcursResponseDTO currency = cbarRestClient.getCurrency();
+
+            currency.getValTypeList().forEach(valTypeResponseDTO -> {
+                List<ValuteResponseDTO> valuteResponseDTOList = valTypeResponseDTO.getValuteResponseDTOList();
+
+                if (Objects.nonNull(valuteResponseDTOList) && !ObjectUtils.isEmpty(valuteResponseDTOList)) {
+
+                    valuteResponseDTOList.stream().filter(valuteResponseDTO -> Objects.nonNull(valuteResponseDTO)
+                                    && !ObjectUtils.isEmpty(valuteResponseDTO)
+                                    && valuteResponseDTO.getCode().equals(debitAccount.getCurrency().toString())
+                                    && debitAccount.getCurrency().equals(Currency.USD)).findFirst()
+                            .ifPresent(valuteResponseDTO -> {
+                                debitAccount.setBalance(debitAccount.getBalance().subtract(accountToAccountRequestDTO.getAmount()));
+                                creditAccount.setBalance(creditAccount.getBalance().add(accountToAccountRequestDTO.getAmount().multiply(valuteResponseDTO.getValue())));
+                            });
+
+                    valuteResponseDTOList.stream()
+                            .filter(valuteResponseDTO -> Objects.nonNull(valuteResponseDTO)
+                                    && !ObjectUtils.isEmpty(valuteResponseDTO)
+                                    && !valuteResponseDTO.getCode().equals(debitAccount.getCurrency().toString())
+                                    && valuteResponseDTO.getCode().equals(Currency.USD.toString())).findFirst()
+                            .ifPresent(valuteResponseDTO -> {
+                                debitAccount.setBalance(debitAccount.getBalance().subtract(accountToAccountRequestDTO.getAmount()));
+                                creditAccount.setBalance(creditAccount.getBalance().add(accountToAccountRequestDTO.getAmount()
+                                        .divide(valuteResponseDTO.getValue(), 2, RoundingMode.DOWN)));
+                            });
+                }
+            });
+        } else {
+
+            debitAccount.setBalance(debitAccount.getBalance().subtract(accountToAccountRequestDTO.getAmount()));
+            creditAccount.setBalance(debitAccount.getBalance().add(accountToAccountRequestDTO.getAmount()));
+        }
 
         return CommonResponseDTO.builder().status(Status.builder()
                 .statusCode(StatusCode.SUCCESS)
